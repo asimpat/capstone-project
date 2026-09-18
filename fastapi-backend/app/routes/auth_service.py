@@ -174,18 +174,20 @@ def refresh(
     ).first()
 
     if not stored_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+        raise APIException(
+            status_code=401,
+            code="INVALID_REFRESH_TOKEN",
+            message="Invalid refresh token"
         )
 
     if stored_token.expires_at < datetime.utcnow():
         db.delete(stored_token)
         db.commit()
 
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token expired"
+        raise APIException(
+            status_code=401,
+            code="REFRESH_TOKEN_EXPIRED",
+            message="Refresh token expired"
         )
 
     user = db.query(User).filter(
@@ -193,10 +195,11 @@ def refresh(
     ).first()
 
     if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
-        )
+       raise APIException(
+           status_code=401,
+           code="INVALID_REFRESH_TOKEN",
+           message="Invalid refresh token"
+       )
 
     # Rotate the refresh token
     db.delete(stored_token)

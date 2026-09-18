@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from app.exceptions import APIException
 
 from app.database.session import get_db
 from app.models.user import User
@@ -19,39 +20,43 @@ def get_current_user(
     try:
         payload = verify_access_token(token)
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired access token"
+        raise APIException(
+            status_code=401,
+            code="INVALID_ACCESS_TOKEN",
+            message="Invalid or expired access token"
         )
 
     if payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid access token"
+        raise APIException(
+            status_code=401,
+            code="INVALID_ACCESS_TOKEN",
+            message="Invalid access token"
         )
 
     user_id = payload.get("sub")
 
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid access token"
+        raise APIException(
+            status_code=401,
+            code="INVALID_ACCESS_TOKEN",
+            message="Invalid access token"
         )
-
     user = db.query(User).filter(
         User.id == user_id
     ).first()
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
+        raise APIException(
+            status_code=401,
+            code="USER_NOT_FOUND",
+            message="User not found"
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User is inactive"
+        raise APIException(
+            status_code=401,
+            code="USER_INACTIVE",
+            message="User is inactive"
         )
 
     return user

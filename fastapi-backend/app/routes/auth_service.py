@@ -11,6 +11,7 @@ from app.schemas import UserRegister, UserLogin, RefreshTokenRequest
 from app.security.hash_password import hash_password, verify_password
 from app.security.tokens import generate_access_token, generate_refresh_token, verify_refresh_token
 from app.events.emitter import event_emitter
+from app.utils.responses import success_response
 
 
 router = APIRouter(
@@ -32,9 +33,10 @@ def register(
     ).first()
 
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered"
+        raise APIException(
+            status_code=409,
+            code="EMAIL_ALREADY_EXISTS",
+            message="Email already registered"
         )
     hashed_password = hash_password(user_data.password)
 
@@ -57,14 +59,16 @@ def register(
         }
     )
 
-    return {
-        "message": "User registered successfully",
-        "user": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email
+    return success_response(
+        {
+            "message": "User registered successfully",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email
+            }
         }
-    }
+    )
 
 
 @router.post("/login")
@@ -79,15 +83,17 @@ def login(
     ).first()
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+        raise APIException(
+            status_code=401,
+            code="AUTHENTICATION_ERROR",
+            message="Invalid credentials"
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+        raise APIException(
+            status_code=401,
+            code="AUTHENTICATION_ERROR",
+            message="Invalid credentials"
         )
 
     password_is_valid = verify_password(
@@ -96,9 +102,10 @@ def login(
     )
 
     if not password_is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+        raise APIException(
+            status_code=401,
+            code="AUTHENTICATION_ERROR",
+            message="Invalid credentials"
         )
 
     access_token = generate_access_token(user)
@@ -120,19 +127,21 @@ def login(
         }
     )
 
-    return {
-        "message": "Login successful",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "role": user.role,
-            "tier": user.tier
+    return success_response(
+        {
+            "message": "Login successful",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "role": user.role,
+                "tier": user.tier
+            }
         }
-    }
+    )
 
 
 @router.post("/refresh")
@@ -205,11 +214,13 @@ def refresh(
     db.add(new_refresh_token)
     db.commit()
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    return success_response(
+        {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
+    )
 
 
 @router.post("/logout")
@@ -229,6 +240,8 @@ def logout(
         db.delete(stored_token)
         db.commit()
 
-    return {
-        "message": "Logout successful"
-    }
+    return success_response(
+        {
+            "message": "Logout successful"
+        }
+    )

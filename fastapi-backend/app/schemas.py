@@ -1,5 +1,6 @@
 # registration schema
 
+from typing import Any
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -33,3 +34,9 @@ class UserLogin(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class SuccessResponse(BaseModel):
+    success: bool = True
+    data: Any
+    meta: Any = None

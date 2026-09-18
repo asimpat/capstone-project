@@ -1,11 +1,16 @@
 from datetime import datetime
 
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Boolean, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+# from sqlalchemy.orm import Mapped, mapped_column
 from cuid2 import cuid_wrapper
 
 from app.database.session import Base
 generate_cuid = cuid_wrapper()
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.refresh_token import RefreshToken
 
 class User(Base):
     __tablename__ = "users"
@@ -62,4 +67,9 @@ class User(Base):
         DateTime,
         default=datetime.utcnow,
         onupdate=datetime.utcnow
+    )
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan"
     )

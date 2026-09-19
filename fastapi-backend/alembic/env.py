@@ -14,7 +14,12 @@ load_dotenv()
 # access to the values within the .ini file in use.
 config = context.config
 
-database_url = os.getenv("DATABASE_URL")
+# database_url = os.getenv("DATABASE_URL")
+
+database_url = os.getenv(
+    "TEST_DATABASE_URL",
+    os.getenv("DATABASE_URL")
+)
 
 config.set_main_option("sqlalchemy.url", database_url)
 

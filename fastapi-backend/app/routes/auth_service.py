@@ -12,7 +12,7 @@ from app.security.hash_password import hash_password, verify_password
 from app.security.tokens import generate_access_token, generate_refresh_token, verify_refresh_token
 from app.events.emitter import event_emitter
 from app.utils.responses import success_response
-
+from app.exceptions import APIException
 
 router = APIRouter(
     prefix="/api/v1/auth",

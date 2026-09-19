@@ -8,13 +8,14 @@ from app.routes.auth_service import router as auth_router
 from app.routes.user_service import router as users_router
 import app.events.listeners
 from fastapi.exceptions import RequestValidationError
-
+import logging
 
 app = FastAPI()
 
 
 app.include_router(auth_router)
 app.include_router(users_router)
+logger = logging.getLogger("__name__")
 
 
 @app.exception_handler(APIException)
@@ -61,3 +62,29 @@ async def validation_exception_handler(
             details=details
         )
     )
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(
+    request: Request,
+    exc: Exception
+):
+    logger.exception(
+        "Unhandled exception occurred",
+        exc_info=exc
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content=error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details=[]
+        )
+    )
+
+
+@app.get("/test-error")
+def test_error():
+    result = 10 / 0
+    return {"result": result}

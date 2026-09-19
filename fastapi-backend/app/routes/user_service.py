@@ -1,3 +1,5 @@
+from unittest import result
+
 from fastapi import APIRouter, Depends
 
 from app.models.user import User
@@ -26,3 +28,4 @@ def get_me(
         }
     )
     
+

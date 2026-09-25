@@ -73,3 +73,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    user_roles = relationship(
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )

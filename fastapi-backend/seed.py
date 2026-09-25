@@ -6,6 +6,9 @@ from app.database.session import SessionLocal
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.role_permission import RolePermission
+from app.models.user_role import UserRole
+from app.models.user import User
+from app.security.hash_password import hash_password
 
 permission_defs = [
     {
@@ -185,6 +188,73 @@ def seed_role_permissions(db, roles, permissions):
     db.flush()
 
 
+
+seed_users_defs = [
+    {
+        "name": "System Admin",
+        "email": "admin@example.com",
+        "password": "Admin@123456",
+        "role": "admin",
+    },
+    {
+        "name": "Test User",
+        "email": "test@example.com",
+        "password": "Test@123456",
+        "role": "member",
+    },
+]
+
+
+def seed_users(db, roles):
+    users = {}
+
+    for data in seed_users_defs:
+        result = db.execute(
+            select(User).where(
+                User.email == data["email"]
+            )
+        )
+
+        user = result.scalar_one_or_none()
+
+        if not user:
+            user = User(
+                name=data["name"],
+                email=data["email"],
+                password_hash=hash_password(data["password"]),
+                role=data["role"],
+            )
+
+            db.add(user)
+            db.flush()
+
+        users[data["email"]] = user
+
+        role = roles[data["role"]]
+
+        result = db.execute(
+            select(UserRole).where(
+                UserRole.user_id == user.id,
+                UserRole.role_id == role.id,
+            )
+        )
+
+        user_role = result.scalar_one_or_none()
+
+        if not user_role:
+            db.add(
+                UserRole(
+                    user_id=user.id,
+                    role_id=role.id,
+                    assigned_by=None,
+                )
+            )
+
+    db.flush()
+
+    return users
+
+
 def seed_rbac(db):
     permissions = seed_permissions(db)
 
@@ -196,9 +266,11 @@ def seed_rbac(db):
         permissions
     )
 
+    users = seed_users(db, roles)
+
     db.commit()
 
-    return roles, permissions
+    return users, roles, permissions
 
 
 if __name__ == "__main__":
@@ -206,11 +278,12 @@ if __name__ == "__main__":
 
     try:
         seed_rbac(db)
-        print("RBAC seeding completed successfully.")
+        print("RBAC and users seeding completed successfully.")
 
     except Exception as e:
         db.rollback()
-        print(f"RBAC seeding failed: {e}")
+        raise
+        # print(f"Seeding failed: {e}")
 
     finally:
         db.close()

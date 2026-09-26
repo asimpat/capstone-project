@@ -55,7 +55,30 @@ class Document(Base):
         nullable=False
     )
 
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    deleted_by: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     user = relationship(
         "User",
-        back_populates="documents"
+        back_populates="documents",
+        foreign_keys=[user_id],
+    )
+
+    deleted_by_user = relationship(
+        "User",
+        foreign_keys=[deleted_by],
+    )
+
+    chunks = relationship(
+        "Chunk",
+        back_populates="document",
+        cascade="all, delete-orphan",
     )

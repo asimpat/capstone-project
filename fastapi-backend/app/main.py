@@ -8,6 +8,7 @@ from app.utils.responses import error_response
 
 from app.routes.auth_service import router as auth_router
 from app.routes.user_service import router as users_router
+from app.routes.conversations import router as conversations_router
 import app.events.listeners
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -19,6 +20,7 @@ app = FastAPI()
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(documents_router)
+app.include_router(conversations_router)
 logger = logging.getLogger("__name__")
 
 

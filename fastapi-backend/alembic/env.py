@@ -7,6 +7,7 @@ from alembic import context
 from app.database.session import Base
 from app.models.user import User
 from app.models.document import Document
+from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.role import Role
@@ -14,6 +15,7 @@ from app.models.permission import Permission
 from app.models.user_role import UserRole
 from app.models.role_permission import RolePermission
 from app.models.refresh_token import RefreshToken
+from app.models.usage_log import UsageLog
 import os
 from dotenv import load_dotenv
 

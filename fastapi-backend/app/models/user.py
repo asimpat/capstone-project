@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from datetime import datetime
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -7,10 +8,10 @@ from cuid2 import cuid_wrapper
 
 from app.database.session import Base
 generate_cuid = cuid_wrapper()
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.models.refresh_token import RefreshToken
+
 
 class User(Base):
     __tablename__ = "users"
@@ -83,17 +84,18 @@ class User(Base):
     documents = relationship(
         "Document",
         back_populates="user",
-        cascade="all, delete-orphan"
+        foreign_keys="Document.user_id",
+        cascade="all, delete-orphan",
     )
 
 
-conversations = relationship(
+    conversations = relationship(
     "Conversation",
     back_populates="user",
     cascade="all, delete-orphan"
-)
+    )
 
-messages = relationship(
+    messages = relationship(
     "Message",
     cascade="all, delete-orphan"
-)
+    )

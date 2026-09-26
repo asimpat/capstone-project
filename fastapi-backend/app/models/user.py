@@ -79,3 +79,21 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    documents = relationship(
+        "Document",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+
+conversations = relationship(
+    "Conversation",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)
+
+messages = relationship(
+    "Message",
+    cascade="all, delete-orphan"
+)

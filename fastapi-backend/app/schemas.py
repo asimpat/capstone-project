@@ -1,8 +1,9 @@
 # registration schema
 
+from pydantic import BaseModel, Field
 from typing import Any
 from pydantic import BaseModel, EmailStr, Field, field_validator
-
+from datetime import datetime
 
 class UserRegister(BaseModel):
     name: str
@@ -40,3 +41,25 @@ class SuccessResponse(BaseModel):
     success: bool = True
     data: Any
     meta: Any = None
+
+
+class DocumentCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1)
+
+
+class DocumentResponse(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    content: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)

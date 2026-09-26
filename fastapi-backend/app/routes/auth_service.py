@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import select
+
+from app.models.role import Role
+from app.models.user_role import UserRole
 
 from app.models.refresh_token import RefreshToken
 from app.security.token_hash import hash_token
@@ -13,6 +17,9 @@ from app.security.tokens import generate_access_token, generate_refresh_token, v
 from app.events.emitter import event_emitter
 from app.utils.responses import success_response
 from app.exceptions import APIException
+
+from app.models.user import User
+from app.security.authorization import require_permission
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -46,7 +53,35 @@ def register(
         password_hash=hashed_password
     )
 
+    # db.add(user)
+    # db.commit()
+    # db.refresh(user)
     db.add(user)
+
+
+    db.flush()
+
+    default_role = db.execute(
+        select(Role).where(
+            Role.is_default.is_(True)
+        )
+    ).scalar_one_or_none()
+
+    if not default_role:
+        raise APIException(
+            status_code=500,
+            code="DEFAULT_ROLE_NOT_FOUND",
+            message="Default role is not configured"
+        )
+
+    user_role = UserRole(
+        user_id=user.id,
+        role_id=default_role.id,
+        assigned_by=None
+    )
+
+    db.add(user_role)
+
     db.commit()
     db.refresh(user)
 
@@ -248,3 +283,15 @@ def logout(
             "message": "Logout successful"
         }
     )
+
+
+@router.get("/permission-test")
+def permission_test(
+    current_user: User = Depends(
+        require_permission("documents:read")
+    )
+):
+    return {
+        "message": "You have documents:read permission",
+        "user": current_user.email
+    }

@@ -12,6 +12,7 @@ from app.routes.conversations import router as conversations_router
 import app.events.listeners
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.routes.jobs import router as jobs_router
 import logging
 
 app = FastAPI()
@@ -21,6 +22,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(documents_router)
 app.include_router(conversations_router)
+app.include_router(jobs_router)
 logger = logging.getLogger("__name__")
 
 

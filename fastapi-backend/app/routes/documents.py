@@ -14,6 +14,10 @@ from app.security.dependencies import get_current_user
 from app.models.chunk import Chunk
 from app.events.document_events import log_document_created
 from app.events.document_events import log_document_deleted
+from app.queues.document_queue import queue_document_for_processing
+from rq.job import Job
+
+from app.queue import redis_connection
 
 
 router = APIRouter(
@@ -46,7 +50,7 @@ class SortOrder(str, Enum):
 
 @router.post(
     "",
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(require_permission("documents:create"))],
 )
 def create_document(
@@ -64,6 +68,8 @@ def create_document(
     db.add(document)
     db.commit()
     db.refresh(document)
+
+    queue_document_for_processing(document.id)
 
     log_document_created(
         db,
@@ -503,5 +509,41 @@ def delete_document(
         "data": {
             "message": "Document deleted successfully",
             "document_id": document.id,
+        },
+    }
+
+
+@router.get("/{document_id}/processing-status")
+def get_processing_status(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = db.get(Document, document_id)
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    if document.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this document",
+        )
+
+    job = None
+
+    if document.status in ["pending", "processing"]:
+        # We don't currently store the RQ job ID on Document,
+        # so progress may not be available here yet.
+        pass
+
+    return {
+        "success": True,
+        "data": {
+            "document_id": document.id,
+            "status": document.status,
         },
     }

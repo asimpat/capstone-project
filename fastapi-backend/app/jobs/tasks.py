@@ -38,6 +38,7 @@ def process_document(document_id: str):
 
         if not document:
             raise ValueError(f"Document {document_id} not found")
+            
 
         # 2. Mark document as processing
         document.status = "processing"

@@ -21,6 +21,9 @@ from sqlalchemy import func, select
 from app.models.document import Document
 from app.models.usage_log import UsageLog
 from app.exceptions import APIException
+from app.middleware.rate_limiter import chat_rate_limit
+
+from app.middleware.conversation_cache import get_cached_conversations
 
 
 router = APIRouter(
@@ -36,7 +39,8 @@ router = APIRouter(
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("conversations:create"))],
+    dependencies=[Depends(chat_rate_limit), Depends(
+        require_permission("conversations:create"))],
 )
 def create_conversation(
     data: ConversationCreate,
@@ -63,116 +67,139 @@ def create_conversation(
 # LIST CONVERSATIONS
 # ============================================================
 
+# @router.get(
+#     "",
+#     dependencies=[Depends(require_permission("conversations:read"))],
+# )
+# async def list_conversations(
+#     page: int = Query(1, ge=1),
+#     limit: int = Query(20, ge=1, le=100),
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     message_count_subquery = (
+#         db.query(
+#             Message.conversation_id,
+#             func.count(Message.id).label("message_count"),
+#         )
+#         .group_by(Message.conversation_id)
+#         .subquery()
+#     )
+
+#     latest_message_subquery = (
+#         db.query(
+#             Message.conversation_id,
+#             func.max(Message.created_at).label("latest_created_at"),
+#         )
+#         .group_by(Message.conversation_id)
+#         .subquery()
+#     )
+
+#     query = (
+#         db.query(
+#             Conversation,
+#             func.coalesce(
+#                 message_count_subquery.c.message_count,
+#                 0,
+#             ).label("message_count"),
+#             Message,
+#         )
+#         .outerjoin(
+#             message_count_subquery,
+#             message_count_subquery.c.conversation_id
+#             == Conversation.id,
+#         )
+#         .outerjoin(
+#             latest_message_subquery,
+#             latest_message_subquery.c.conversation_id
+#             == Conversation.id,
+#         )
+#         .outerjoin(
+#             Message,
+#             (
+#                 Message.conversation_id == Conversation.id
+#             )
+#             & (
+#                 Message.created_at
+#                 == latest_message_subquery.c.latest_created_at
+#             ),
+#         )
+#         .filter(
+#             Conversation.user_id == current_user.id
+#         )
+#         .order_by(
+#             Conversation.updated_at.desc()
+#         )
+#     )
+
+#     total = (
+#         db.query(func.count(Conversation.id))
+#         .filter(
+#             Conversation.user_id == current_user.id
+#         )
+#         .scalar()
+#     )
+
+#     offset = (page - 1) * limit
+
+#     rows = (
+#         query
+#         .offset(offset)
+#         .limit(limit)
+#         .all()
+#     )
+
+#     data = []
+
+#     for conversation, message_count, latest_message in rows:
+#         data.append({
+#             "id": conversation.id,
+#             "title": conversation.title,
+#             "message_count": message_count,
+#             "last_message": (
+#                 {
+#                     "id": latest_message.id,
+#                     "content": latest_message.content,
+#                     "role": latest_message.role,
+#                     "created_at": latest_message.created_at,
+#                 }
+#                 if latest_message
+#                 else None
+#             ),
+#             "updated_at": conversation.updated_at,
+#         })
+
+#     return {
+#         "success": True,
+#         "data": data,
+#         "meta": {
+#             "page": page,
+#             "limit": limit,
+#             "total": total,
+#         },
+#     }
+
 @router.get(
     "",
     dependencies=[Depends(require_permission("conversations:read"))],
 )
-def list_conversations(
+async def list_conversations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    message_count_subquery = (
-        db.query(
-            Message.conversation_id,
-            func.count(Message.id).label("message_count"),
-        )
-        .group_by(Message.conversation_id)
-        .subquery()
+    result = await get_cached_conversations(
+        user_id=current_user.id,
+        page=page,
+        limit=limit,
+        db=db,
     )
-
-    latest_message_subquery = (
-        db.query(
-            Message.conversation_id,
-            func.max(Message.created_at).label("latest_created_at"),
-        )
-        .group_by(Message.conversation_id)
-        .subquery()
-    )
-
-    query = (
-        db.query(
-            Conversation,
-            func.coalesce(
-                message_count_subquery.c.message_count,
-                0,
-            ).label("message_count"),
-            Message,
-        )
-        .outerjoin(
-            message_count_subquery,
-            message_count_subquery.c.conversation_id
-            == Conversation.id,
-        )
-        .outerjoin(
-            latest_message_subquery,
-            latest_message_subquery.c.conversation_id
-            == Conversation.id,
-        )
-        .outerjoin(
-            Message,
-            (
-                Message.conversation_id == Conversation.id
-            )
-            & (
-                Message.created_at
-                == latest_message_subquery.c.latest_created_at
-            ),
-        )
-        .filter(
-            Conversation.user_id == current_user.id
-        )
-        .order_by(
-            Conversation.updated_at.desc()
-        )
-    )
-
-    total = (
-        db.query(func.count(Conversation.id))
-        .filter(
-            Conversation.user_id == current_user.id
-        )
-        .scalar()
-    )
-
-    offset = (page - 1) * limit
-
-    rows = (
-        query
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-
-    data = []
-
-    for conversation, message_count, latest_message in rows:
-        data.append({
-            "id": conversation.id,
-            "title": conversation.title,
-            "message_count": message_count,
-            "last_message": (
-                {
-                    "id": latest_message.id,
-                    "content": latest_message.content,
-                    "role": latest_message.role,
-                    "created_at": latest_message.created_at,
-                }
-                if latest_message
-                else None
-            ),
-            "updated_at": conversation.updated_at,
-        })
 
     return {
         "success": True,
-        "data": data,
-        "meta": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-        },
+        "data": result["data"],
+        "meta": result["meta"],
     }
 
 

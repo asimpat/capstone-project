@@ -17,7 +17,7 @@ from app.security.tokens import generate_access_token, generate_refresh_token, v
 from app.events.emitter import event_emitter
 from app.utils.responses import success_response
 from app.exceptions import APIException
-
+from app.middleware.rate_limiter import auth_rate_limit
 from app.models.user import User
 from app.security.authorization import require_permission
 
@@ -28,7 +28,8 @@ router = APIRouter(
 
 
 @router.post("/register",
-             status_code=status.HTTP_201_CREATED)
+             status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(auth_rate_limit)])
 def register(
     user_data: UserRegister,
     db: Session = Depends(get_db)
@@ -106,7 +107,7 @@ def register(
     )
 
 
-@router.post("/login")
+@router.post("/login",  dependencies=[Depends(auth_rate_limit)])
 def login(
     user_data: UserLogin,
     db: Session = Depends(get_db)

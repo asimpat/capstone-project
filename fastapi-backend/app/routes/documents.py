@@ -16,8 +16,12 @@ from app.events.document_events import log_document_created
 from app.events.document_events import log_document_deleted
 from app.queues.document_queue import queue_document_for_processing
 from rq.job import Job
-
+from app.middleware.document_cache import get_cached_document
+from app.cache import cache_delete, hash_key
 from app.queue import redis_connection
+from app.middleware.rate_limiter import api_rate_limit, upload_rate_limit
+from app.middleware.abuse_prevention import track_document_access
+
 
 
 router = APIRouter(
@@ -51,7 +55,9 @@ class SortOrder(str, Enum):
 @router.post(
     "",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_permission("documents:create"))],
+
+    dependencies=[Depends(upload_rate_limit), Depends(
+        require_permission("documents:create"))],
 )
 def create_document(
     data: DocumentCreate,
@@ -89,7 +95,8 @@ def create_document(
 
 @router.get(
     "",
-    dependencies=[Depends(require_permission("documents:read"))],
+    dependencies=[Depends(api_rate_limit), Depends(
+        require_permission("documents:read"))],
 )
 def list_documents(
     page: int = Query(1, ge=1),
@@ -301,10 +308,10 @@ def list_documents(
         sort_column = Document.title
     elif sort_by == "chunkCount":
         query = query.order_by(
-        chunk_count.asc()
-        if sort_order == "asc"
-        else chunk_count.desc()
-    )
+            chunk_count.asc()
+            if sort_order == "asc"
+            else chunk_count.desc()
+        )
     else:
         sort_column = Document.created_at
 
@@ -366,6 +373,8 @@ def list_documents(
         .group_by(Document.id)
     )
 
+
+
     return {
         "success": True,
         "data": [
@@ -384,21 +393,51 @@ def list_documents(
 # GET SINGLE DOCUMENT
 # ============================================================
 
+# @router.get(
+#     "/{document_id}",
+#     dependencies=[Depends(require_permission("documents:read"))],
+# )
+# def get_document(
+#     document_id: str,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     document = db.scalar(
+#         select(Document).where(
+#             Document.id == document_id,
+#             Document.user_id == current_user.id,
+#             Document.deleted_at.is_(None),
+#         )
+#     )
+
+#     if not document:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail={
+#                 "code": "DOCUMENT_NOT_FOUND",
+#                 "message": "Document not found",
+#             },
+#         )
+
+#     return {
+#         "success": True,
+#         "data": DocumentResponse.model_validate(document),
+#     }
+
 @router.get(
     "/{document_id}",
-    dependencies=[Depends(require_permission("documents:read"))],
+    dependencies=[Depends(api_rate_limit), Depends(
+        require_permission("documents:read"))],
 )
-def get_document(
+async def get_document(
     document_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    document = db.scalar(
-        select(Document).where(
-            Document.id == document_id,
-            Document.user_id == current_user.id,
-            Document.deleted_at.is_(None),
-        )
+    document = await get_cached_document(
+        document_id=document_id,
+        user_id=current_user.id,
+        db=db,
     )
 
     if not document:
@@ -412,7 +451,7 @@ def get_document(
 
     return {
         "success": True,
-        "data": DocumentResponse.model_validate(document),
+        "data": document,
     }
 
 
@@ -424,7 +463,7 @@ def get_document(
     "/{document_id}",
     dependencies=[Depends(require_permission("documents:update"))],
 )
-def update_document(
+async def update_document(
     document_id: str,
     data: DocumentUpdate,
     db: Session = Depends(get_db),
@@ -451,6 +490,16 @@ def update_document(
 
     db.commit()
     db.refresh(document)
+
+    cache_key = f"doc:{hash_key(document_id, current_user.id)}"
+
+    await cache_delete(cache_key)
+
+    log_document_deleted(
+        db,
+        current_user.id,
+        document.id,
+    )
 
     return {
         "success": True,

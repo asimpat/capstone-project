@@ -2,6 +2,7 @@ import pybreaker
 
 from app.lib.http.retry import with_retry
 from app.lib.http.openai_client import openai_post
+from app.utils.logger import logger
 
 
 openai_breaker = pybreaker.CircuitBreaker(
@@ -20,14 +21,20 @@ def call_openai(path: str, payload: dict):
 
 @openai_breaker.half_open
 def on_half_open():
-    print("⚠️ OpenAI circuit breaker HALF-OPEN")
+    logger.info(
+        "OpenAI circuit breaker CLOSED"
+    )
 
 
 @openai_breaker.closed
 def on_closed():
-    print("✅ OpenAI circuit breaker CLOSED")
+    logger.info(
+    "OpenAI circuit breaker CLOSED"
+)
 
 
 @openai_breaker.opened
 def on_opened():
-    print("⚠️ OpenAI circuit breaker OPENED")
+        logger.error(
+        "OpenAI circuit breaker OPENED"
+        )

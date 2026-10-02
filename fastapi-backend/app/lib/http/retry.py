@@ -1,7 +1,7 @@
 import time
 
 import httpx
-
+from app.utils.logger import logger
 
 def is_retryable(error: Exception) -> bool:
     if isinstance(error, httpx.TimeoutException):
@@ -58,9 +58,10 @@ def with_retry(
             else:
                 delay = base_delay * (2 ** (attempt - 1))
 
-            print(
-                f"Attempt {attempt} failed. "
-                f"Retrying in {delay}s..."
+            logger.warning(
+                "HTTP request failed; retrying | attempt=%s delay=%ss",
+                attempt,
+                delay,
             )
 
             time.sleep(delay)

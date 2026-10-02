@@ -4,6 +4,7 @@ import time
 import httpx
 from dotenv import load_dotenv
 from app.lib.http.retry import with_retry
+from app.utils.logger import logger
 
 load_dotenv()
 
@@ -16,8 +17,10 @@ if not OPENAI_API_KEY:
 def log_request(request: httpx.Request):
     request.extensions["start_time"] = time.perf_counter()
 
-    print(
-        f"→ OpenAI {request.method} {request.url}"
+    logger.info(
+        "OpenAI request | method=%s url=%s",
+        request.method,
+        request.url,
     )
 
 
@@ -31,11 +34,14 @@ def log_response(response: httpx.Response):
             (time.perf_counter() - start_time) * 1000
         )
 
-    print(
-        f"← OpenAI {response.status_code} "
-        f"{response.request.url} ({duration}ms)"
-    )
 
+    logger.info(
+        "OpenAI response | status=%s url=%s duration_ms=%.2f",
+        response.status_code,
+        response.request.url,
+        duration,
+    )
+    
     check_rate_limit(response)
 
 

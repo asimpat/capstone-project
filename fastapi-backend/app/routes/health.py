@@ -6,7 +6,7 @@ from app.cache import cache_redis
 
 
 router = APIRouter(
-    prefix="/api/v1/health",
+    prefix="/health",
     tags=["Health"],
 )
 

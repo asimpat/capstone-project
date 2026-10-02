@@ -41,7 +41,7 @@ def log_response(response: httpx.Response):
         response.request.url,
         duration,
     )
-    
+
     check_rate_limit(response)
 
 
@@ -72,28 +72,29 @@ def openai_post(path: str, payload: dict):
         return response
 
     except httpx.HTTPStatusError as error:
-        print(
-            f"✕ OpenAI HTTP error "
-            f"{error.response.status_code}: "
-            f"{error.response.text}"
+        logger.error(
+            "OpenAI HTTP error | status=%s error=%s",
+            error.response.status_code,
+            error.response.text,
         )
         raise
 
     except httpx.TimeoutException as error:
-        print(
-            f"✕ OpenAI timeout: {error}"
+        logger.error(
+            "OpenAI timeout | error=%s",
+            error,
         )
         raise
 
     except httpx.RequestError as error:
-        print(
-            f"✕ OpenAI network error: {error}"
+        logger.exception(
+            "OpenAI request setup error"
         )
         raise
 
     except Exception as error:
-        print(
-            f"✕ OpenAI request setup error: {error}"
+        logger.exception(
+            "OpenAI request setup error"
         )
         raise
 
@@ -118,7 +119,7 @@ def check_rate_limit(response: httpx.Response):
         return
 
     if remaining < 50:
-        print(
-            f"⚠️ OpenAI rate limit getting low: "
-            f"{remaining} remaining"
+        logger.warning(
+            "OpenAI rate limit getting low | remaining=%s",
+            remaining,
         )

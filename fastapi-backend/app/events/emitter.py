@@ -1,5 +1,7 @@
 from collections import defaultdict
 from typing import Callable, Any
+from app.utils.logger import logger
+
 
 
 class EventEmitter:
@@ -14,9 +16,9 @@ class EventEmitter:
             try:
                 listener(data)
             except Exception as e:
-                print(
-                    f"Event listener failed for "
-                    f"{event_name}: {e}"
+                logger.exception(
+                    "Event listener failed | event=%s",
+                    event_name,
                 )
 
 

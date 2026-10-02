@@ -1,11 +1,12 @@
 from app.events.emitter import event_emitter
+from app.utils.logger import logger
 
 
 def user_registered_listener(data):
-    print(
-        f"USER_REGISTERED event received: "
-        f"{data['email']}"
-    )
+   logger.info(
+       "USER_REGISTERED event received | email=%s",
+       data["email"],
+   )
 
 
 event_emitter.on(
@@ -15,9 +16,9 @@ event_emitter.on(
 
 
 def user_logged_in_listener(data):
-    print(
-        f"USER_LOGGED_IN event received: "
-        f"{data['email']}"
+    logger.info(
+        "USER_LOGGED_IN event received | email=%s",
+        data["email"],
     )
 
 

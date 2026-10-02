@@ -1,11 +1,12 @@
 from app.queues.dead_letter_queue import dead_letter_queue
+from app.utils.logger import logger
 
 
 def on_job_success(job, connection, result, *args, **kwargs):
-    print(
-        f"[JOB COMPLETED] "
-        f"job_id={job.id}, "
-        f"result={result}"
+    logger.info(
+        "Job completed | job_id=%s result=%s",
+        job.id,
+        result,
     )
 
 
@@ -18,10 +19,10 @@ def on_job_failure(
     *args,
     **kwargs,
 ):
-    print(
-        f"[JOB FAILED] "
-        f"job_id={job.id}, "
-        f"error={exc_value}"
+    logger.error(
+        "Job failed | job_id=%s error=%s",
+        job.id,
+        exc_value,
     )
 
     dead_letter_queue.enqueue(
@@ -32,7 +33,7 @@ def on_job_failure(
 
 
 def on_job_stopped(job, connection, *args, **kwargs):
-    print(
-        f"[JOB STOPPED] "
-        f"job_id={job.id}"
+    logger.warning(
+        "Job stopped | job_id=%s",
+        job.id,
     )

@@ -13,6 +13,7 @@ import app.events.listeners
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.routes.jobs import router as jobs_router
+from app.routes.health import router as health_router
 from app.routes.webhooks import router as webhook_router
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
@@ -35,6 +36,8 @@ app.include_router(documents_router)
 app.include_router(conversations_router)
 app.include_router(jobs_router)
 app.include_router(webhook_router)
+app.include_router(health_router)
+
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(MetricsMiddleware)

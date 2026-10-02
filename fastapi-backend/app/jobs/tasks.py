@@ -4,6 +4,7 @@ from sqlalchemy import delete
 from app.database.session import SessionLocal
 from app.models.document import Document
 from app.models.chunk import Chunk
+from app.utils.logger import logger
 
 
 def update_progress(job, progress: int, step: str):
@@ -108,8 +109,10 @@ def process_document(document_id: str):
 
 
 def record_dead_letter(job_id: str, error: str):
-    print(
-        f"[DLQ] Job {job_id} permanently failed: {error}"
+    logger.error(
+        "Dead-letter job permanently failed | job_id=%s error=%s",
+        job_id,
+        error,
     )
 
     return {

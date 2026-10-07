@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from cuid2 import cuid_wrapper
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,6 +34,11 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(
         Integer,
         nullable=False
+    )
+
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1536),
+        nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -1,3 +1,4 @@
+import os
 import time
 import hashlib
 
@@ -12,9 +13,10 @@ from app.utils.logger import logger
 from app.cache import CACHE_TTL, cache_get, cache_set
 
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIMENSIONS = 1536
+EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+EMBEDDING_DIMENSIONS = int(os.getenv("OLLAMA_EMBEDDING_DIMENSIONS", "768"))
 EMBEDDING_BATCH_SIZE = 100
+
 
 def content_hash(text: str) -> str:
     """
@@ -24,6 +26,7 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(
         text.encode("utf-8")
     ).hexdigest()
+
 
 def generate_embedding(text: str) -> list[float]:
     """
@@ -36,7 +39,7 @@ def generate_embedding(text: str) -> list[float]:
     start_time = time.perf_counter()
 
     response = openai_post_with_retry(
-        "/embeddings",
+        "/api/embeddings",
         {
             "input": text,
             "model": EMBEDDING_MODEL,
@@ -45,7 +48,16 @@ def generate_embedding(text: str) -> list[float]:
 
     data = response.json()
 
-    embedding = data["data"][0]["embedding"]
+    embedding = data.get("embedding")
+    if embedding is None and isinstance(data.get("embeddings"), list):
+        embedding = data["embeddings"][0]
+
+    if not embedding:
+        raise ValueError(
+            "Ollama returned an empty embedding. "
+            "Check that Ollama is serving embeddings and that "
+            f"{EMBEDDING_MODEL} is a valid embedding model."
+        )
 
     duration_ms = int(
         (time.perf_counter() - start_time) * 1000
@@ -105,7 +117,7 @@ def generate_embeddings(
         start_time = time.perf_counter()
 
         response = openai_post_with_retry(
-            "/embeddings",
+            "/api/embeddings",
             {
                 "input": batch,
                 "model": EMBEDDING_MODEL,
@@ -114,23 +126,41 @@ def generate_embeddings(
 
         data = response.json()
 
-        embedding_data = sorted(
-            data["data"],
-            key=lambda item: item["index"],
-        )
-
-        for offset, item in enumerate(embedding_data):
-            embedding = item["embedding"]
-
-            if len(embedding) != EMBEDDING_DIMENSIONS:
+        if isinstance(data.get("embeddings"), list):
+            embedding_data = data["embeddings"]
+            if not embedding_data:
                 raise ValueError(
-                    f"Expected {EMBEDDING_DIMENSIONS} dimensions, "
-                    f"got {len(embedding)}"
+                    "Ollama returned an empty batch embedding list. "
+                    "Check that Ollama is serving embeddings and that "
+                    f"{EMBEDDING_MODEL} is a valid embedding model."
                 )
+            for offset, embedding in enumerate(embedding_data):
+                if len(embedding) != EMBEDDING_DIMENSIONS:
+                    raise ValueError(
+                        f"Expected {EMBEDDING_DIMENSIONS} dimensions, "
+                        f"got {len(embedding)}"
+                    )
 
-            original_index = batch_start + offset
+                original_index = batch_start + offset
+                results[original_index] = embedding
+        else:
+            embedding_data = sorted(
+                data.get("data", []),
+                key=lambda item: item["index"],
+            )
 
-            results[original_index] = embedding
+            for offset, item in enumerate(embedding_data):
+                embedding = item["embedding"]
+
+                if len(embedding) != EMBEDDING_DIMENSIONS:
+                    raise ValueError(
+                        f"Expected {EMBEDDING_DIMENSIONS} dimensions, "
+                        f"got {len(embedding)}"
+                    )
+
+                original_index = batch_start + offset
+
+                results[original_index] = embedding
 
         duration_ms = int(
             (time.perf_counter() - start_time) * 1000
@@ -153,11 +183,12 @@ def generate_embeddings(
         if embedding is not None
     ]
 
+
 def store_chunk_embedding(
-        db: Session,
-        chunk_id: str,
-        embedding: list[float],
-    ) -> None:
+    db: Session,
+    chunk_id: str,
+    embedding: list[float],
+) -> None:
     """
     Store an embedding for a single chunk.
     """

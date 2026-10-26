@@ -8,17 +8,14 @@ from app.utils.logger import logger
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is not configured")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 def log_request(request: httpx.Request):
     request.extensions["start_time"] = time.perf_counter()
 
     logger.info(
-        "OpenAI request | method=%s url=%s",
+        "Ollama request | method=%s url=%s",
         request.method,
         request.url,
     )
@@ -34,9 +31,8 @@ def log_response(response: httpx.Response):
             (time.perf_counter() - start_time) * 1000
         )
 
-
     logger.info(
-        "OpenAI response | status=%s url=%s duration_ms=%.2f",
+        "Ollama response | status=%s url=%s duration_ms=%.2f",
         response.status_code,
         response.request.url,
         duration,
@@ -45,11 +41,10 @@ def log_response(response: httpx.Response):
     check_rate_limit(response)
 
 
-openai_client = httpx.Client(
-    base_url="https://api.openai.com/v1",
-    timeout=30.0,
+ollama_client = httpx.Client(
+    base_url=OLLAMA_BASE_URL,
+    timeout=120.0,
     headers={
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
         "User-Agent": "DocuChat/1.0",
     },
@@ -62,7 +57,7 @@ openai_client = httpx.Client(
 
 def openai_post(path: str, payload: dict):
     try:
-        response = openai_client.post(
+        response = ollama_client.post(
             path,
             json=payload,
         )
@@ -73,7 +68,7 @@ def openai_post(path: str, payload: dict):
 
     except httpx.HTTPStatusError as error:
         logger.error(
-            "OpenAI HTTP error | status=%s error=%s",
+            "Ollama HTTP error | status=%s error=%s",
             error.response.status_code,
             error.response.text,
         )
@@ -81,20 +76,20 @@ def openai_post(path: str, payload: dict):
 
     except httpx.TimeoutException as error:
         logger.error(
-            "OpenAI timeout | error=%s",
+            "Ollama timeout | error=%s",
             error,
         )
         raise
 
     except httpx.RequestError as error:
         logger.exception(
-            "OpenAI request setup error"
+            "Ollama request setup error"
         )
         raise
 
-    except Exception as error:
+    except Exception:
         logger.exception(
-            "OpenAI request setup error"
+            "Ollama request setup error"
         )
         raise
 
@@ -106,20 +101,4 @@ def openai_post_with_retry(path: str, payload: dict):
 
 
 def check_rate_limit(response: httpx.Response):
-    remaining = response.headers.get(
-        "x-ratelimit-remaining-requests"
-    )
-
-    if remaining is None:
-        return
-
-    try:
-        remaining = int(remaining)
-    except ValueError:
-        return
-
-    if remaining < 50:
-        logger.warning(
-            "OpenAI rate limit getting low | remaining=%s",
-            remaining,
-        )
+    return

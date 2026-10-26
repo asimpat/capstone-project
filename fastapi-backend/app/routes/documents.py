@@ -20,6 +20,11 @@ from app.middleware.document_cache import get_cached_document
 from app.cache import cache_delete, hash_key
 from app.queue import redis_connection
 from app.middleware.rate_limiter import api_rate_limit, upload_rate_limit
+from fastapi import UploadFile, File, Form
+from app.services.document_processing import (
+    detect_format,
+    extract_text,
+)
 from app.middleware.abuse_prevention import track_document_access
 
 
@@ -85,6 +90,85 @@ def create_document(
 
     return {
         "success": True,
+        "data": DocumentResponse.model_validate(document),
+    }
+
+
+@router.post(
+    "/upload",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(upload_rate_limit),
+        Depends(require_permission("documents:create")),
+    ],
+)
+async def upload_document(
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="A filename is required.",
+        )
+
+    try:
+        file_format = detect_format(file.filename)
+        file_content = await file.read()
+
+        if not file_content:
+            raise HTTPException(
+                status_code=400,
+                detail="The uploaded file is empty.",
+            )
+
+        extracted = extract_text(
+            file_content,
+            file_format,
+        )
+
+        text_content = extracted["text"].strip()
+
+        if not text_content:
+            raise HTTPException(
+                status_code=400,
+                detail="No readable text was found in the file.",
+            )
+
+    except HTTPException:
+        raise
+    except (ValueError, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+    finally:
+        await file.close()
+
+    document = Document(
+        user_id=current_user.id,
+        title=(title or "").strip() or file.filename,
+        content=text_content,
+        status="pending",
+    )
+
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    queue_document_for_processing(document.id)
+
+    log_document_created(
+        db,
+        current_user.id,
+        document.id,
+    )
+
+    return {
+        "success": True,
+        "message": "Document uploaded and queued for processing.",
         "data": DocumentResponse.model_validate(document),
     }
 

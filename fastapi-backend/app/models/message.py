@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from cuid2 import cuid_wrapper
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text, Integer, Float, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.session import Base
@@ -48,6 +48,27 @@ class Message(Base):
         String(20),
         nullable=False,
         default="user"
+    )
+
+    prompt_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True
+    )
+
+    completion_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True
+    )
+
+    cost_usd: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True
+    )
+
+    message_metadata: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSON,
+        nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

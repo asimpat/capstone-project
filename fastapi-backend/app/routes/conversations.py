@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -22,6 +23,9 @@ from app.models.document import Document
 from app.models.usage_log import UsageLog
 from app.exceptions import APIException
 from app.middleware.rate_limiter import chat_rate_limit
+
+from app.services.search import semantic_search
+from app.services.rag import assemble_context, generate_rag_response
 
 from app.middleware.conversation_cache import get_cached_conversations
 
@@ -63,122 +67,6 @@ def create_conversation(
     }
 
 
-# ============================================================
-# LIST CONVERSATIONS
-# ============================================================
-
-# @router.get(
-#     "",
-#     dependencies=[Depends(require_permission("conversations:read"))],
-# )
-# async def list_conversations(
-#     page: int = Query(1, ge=1),
-#     limit: int = Query(20, ge=1, le=100),
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user),
-# ):
-#     message_count_subquery = (
-#         db.query(
-#             Message.conversation_id,
-#             func.count(Message.id).label("message_count"),
-#         )
-#         .group_by(Message.conversation_id)
-#         .subquery()
-#     )
-
-#     latest_message_subquery = (
-#         db.query(
-#             Message.conversation_id,
-#             func.max(Message.created_at).label("latest_created_at"),
-#         )
-#         .group_by(Message.conversation_id)
-#         .subquery()
-#     )
-
-#     query = (
-#         db.query(
-#             Conversation,
-#             func.coalesce(
-#                 message_count_subquery.c.message_count,
-#                 0,
-#             ).label("message_count"),
-#             Message,
-#         )
-#         .outerjoin(
-#             message_count_subquery,
-#             message_count_subquery.c.conversation_id
-#             == Conversation.id,
-#         )
-#         .outerjoin(
-#             latest_message_subquery,
-#             latest_message_subquery.c.conversation_id
-#             == Conversation.id,
-#         )
-#         .outerjoin(
-#             Message,
-#             (
-#                 Message.conversation_id == Conversation.id
-#             )
-#             & (
-#                 Message.created_at
-#                 == latest_message_subquery.c.latest_created_at
-#             ),
-#         )
-#         .filter(
-#             Conversation.user_id == current_user.id
-#         )
-#         .order_by(
-#             Conversation.updated_at.desc()
-#         )
-#     )
-
-#     total = (
-#         db.query(func.count(Conversation.id))
-#         .filter(
-#             Conversation.user_id == current_user.id
-#         )
-#         .scalar()
-#     )
-
-#     offset = (page - 1) * limit
-
-#     rows = (
-#         query
-#         .offset(offset)
-#         .limit(limit)
-#         .all()
-#     )
-
-#     data = []
-
-#     for conversation, message_count, latest_message in rows:
-#         data.append({
-#             "id": conversation.id,
-#             "title": conversation.title,
-#             "message_count": message_count,
-#             "last_message": (
-#                 {
-#                     "id": latest_message.id,
-#                     "content": latest_message.content,
-#                     "role": latest_message.role,
-#                     "created_at": latest_message.created_at,
-#                 }
-#                 if latest_message
-#                 else None
-#             ),
-#             "updated_at": conversation.updated_at,
-#         })
-
-#     return {
-#         "success": True,
-#         "data": data,
-#         "meta": {
-#             "page": page,
-#             "limit": limit,
-#             "total": total,
-#         },
-#     }
-
 @router.get(
     "",
     dependencies=[Depends(require_permission("conversations:read"))],
@@ -213,7 +101,12 @@ async def list_conversations(
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission("conversations:create"))],
 )
-def send_message(
+@router.post(
+    "/{conversation_id}/messages",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("conversations:create"))],
+)
+async def send_message(
     conversation_id: str,
     data: MessageCreate,
     db: Session = Depends(get_db),
@@ -221,6 +114,7 @@ def send_message(
 ):
     try:
         # 1. Verify conversation belongs to current user
+
         conversation = db.scalar(
             select(Conversation).where(
                 Conversation.id == conversation_id,
@@ -236,6 +130,7 @@ def send_message(
             )
 
         # 2. Verify document if provided
+
         if data.document_id:
             document = db.scalar(
                 select(Document).where(
@@ -252,7 +147,8 @@ def send_message(
                     message="Document not found",
                 )
 
-        # 3. Create user message
+        # 3. Save user message
+
         user_message = Message(
             conversation_id=conversation.id,
             user_id=current_user.id,
@@ -263,40 +159,11 @@ def send_message(
 
         db.add(user_message)
 
-        # 4. Update conversation
         conversation.updated_at = datetime.now(timezone.utc)
 
-        # 5. Create assistant placeholder
-        assistant_message = Message(
-            conversation_id=conversation.id,
-            user_id=current_user.id,
-            document_id=data.document_id,
-            content="Assistant response pending.",
-            role="assistant",
-        )
-
-        db.add(assistant_message)
-
-        # 6. Create usage log
-        usage_log = UsageLog(
-            user_id=current_user.id,
-            conversation_id=conversation.id,
-            document_id=data.document_id,
-            event="message:sent",
-            tokens=0,
-        )
-
-        db.add(usage_log)
-
-        # Generate IDs and validate the pending changes
         db.flush()
-
-        # Commit EVERYTHING together
         db.commit()
-
-        # Refresh objects after commit
         db.refresh(user_message)
-        db.refresh(assistant_message)
 
     except APIException:
         db.rollback()
@@ -306,10 +173,117 @@ def send_message(
         db.rollback()
         raise
 
+    # ============================================================
+    # RAG PIPELINE
+    # ============================================================
+
+    try:
+        # 4. Load recent conversation history
+
+        history_rows = db.scalars(
+            select(Message)
+            .where(
+                Message.conversation_id == conversation.id,
+                Message.user_id == current_user.id,
+            )
+            .order_by(Message.created_at.desc())
+            .limit(10)
+        ).all()
+
+        history_rows.reverse()
+
+        conversation_history = [
+            {
+                "role": message.role,
+                "content": message.content,
+            }
+            for message in history_rows
+        ]
+
+        # 5. Semantic search
+
+        search_results = await semantic_search(
+            query=data.content,
+            user_id=current_user.id,
+            document_id=data.document_id,
+            top_k=10,
+            min_score=0.3,
+        )
+
+        # 6. Assemble context
+
+        context = assemble_context(search_results)
+
+        # 7. Generate RAG response
+
+        rag_response = generate_rag_response(
+            question=data.content,
+            context=context,
+            conversation_history=conversation_history,
+            user_id=current_user.id,
+            conversation_id=conversation.id,
+        )
+
+    except Exception:
+        raise
+
+    # ============================================================
+    # SAVE ASSISTANT RESPONSE
+    # ============================================================
+
+    try:
+        # 8. Save assistant message
+
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            user_id=current_user.id,
+            document_id=data.document_id,
+            content=rag_response["answer"],
+            role="assistant",
+            prompt_tokens=rag_response["tokensUsed"]["prompt"],
+            completion_tokens=rag_response["tokensUsed"]["completion"],
+            cost_usd=rag_response["costUsd"],
+            message_metadata={
+                "model": rag_response["model"],
+                "citations": rag_response["citations"],
+                "contextChunks": len(context["chunks"]),
+            },
+        )
+
+        db.add(assistant_message)
+
+        # 9. Save usage log
+
+        usage_log = UsageLog(
+            user_id=current_user.id,
+            conversation_id=conversation.id,
+            document_id=data.document_id,
+            event="message:sent",
+            tokens=rag_response["tokensUsed"]["total"],
+        )
+
+        db.add(usage_log)
+
+        # 10. Update conversation
+
+        conversation.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+        db.refresh(assistant_message)
+
+    except Exception:
+        db.rollback()
+        raise
+
     return {
         "success": True,
         "data": {
-            "user_message": MessageResponse.model_validate(user_message),
-            "assistant_message": MessageResponse.model_validate(assistant_message),
+            "user_message": MessageResponse.model_validate(
+                user_message
+            ),
+            "assistant_message": MessageResponse.model_validate(
+                assistant_message
+            ),
+            "citations": rag_response["citations"],
         },
     }

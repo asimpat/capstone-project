@@ -16,6 +16,11 @@ from app.cache import CACHE_TTL, cache_get, cache_set
 EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 EMBEDDING_DIMENSIONS = int(os.getenv("OLLAMA_EMBEDDING_DIMENSIONS", "768"))
 EMBEDDING_BATCH_SIZE = 100
+EMBEDDING_API_PATH = "/api/embed"
+
+
+class EmbeddingServiceError(RuntimeError):
+    """Raised when the Ollama embedding service is unavailable or returns invalid data."""
 
 
 def content_hash(text: str) -> str:
@@ -39,7 +44,7 @@ def generate_embedding(text: str) -> list[float]:
     start_time = time.perf_counter()
 
     response = openai_post_with_retry(
-        "/api/embeddings",
+        EMBEDDING_API_PATH,
         {
             "input": text,
             "model": EMBEDDING_MODEL,
@@ -49,11 +54,13 @@ def generate_embedding(text: str) -> list[float]:
     data = response.json()
 
     embedding = data.get("embedding")
-    if embedding is None and isinstance(data.get("embeddings"), list):
-        embedding = data["embeddings"][0]
+    embeddings = data.get("embeddings")
+
+    if embedding is None and isinstance(embeddings, list):
+        embedding = embeddings[0] if embeddings else None
 
     if not embedding:
-        raise ValueError(
+        raise EmbeddingServiceError(
             "Ollama returned an empty embedding. "
             "Check that Ollama is serving embeddings and that "
             f"{EMBEDDING_MODEL} is a valid embedding model."
@@ -66,9 +73,9 @@ def generate_embedding(text: str) -> list[float]:
     dimensions = len(embedding)
 
     if dimensions != EMBEDDING_DIMENSIONS:
-        raise ValueError(
+        raise EmbeddingServiceError(
             f"Expected {EMBEDDING_DIMENSIONS} dimensions, "
-            f"got {dimensions}"
+            f"got {dimensions} for model {EMBEDDING_MODEL}."
         )
 
     logger.info(
@@ -117,7 +124,7 @@ def generate_embeddings(
         start_time = time.perf_counter()
 
         response = openai_post_with_retry(
-            "/api/embeddings",
+            EMBEDDING_API_PATH,
             {
                 "input": batch,
                 "model": EMBEDDING_MODEL,

@@ -26,6 +26,7 @@ from app.middleware.rate_limiter import chat_rate_limit
 
 from app.services.search import semantic_search
 from app.services.rag import assemble_context, generate_rag_response
+from app.services.embedding import EmbeddingServiceError
 
 from app.middleware.conversation_cache import get_cached_conversations
 
@@ -223,6 +224,14 @@ async def send_message(
             user_id=current_user.id,
             conversation_id=conversation.id,
         )
+
+    except EmbeddingServiceError as exc:
+        raise APIException(
+            status_code=503,
+            code="EMBEDDING_SERVICE_ERROR",
+            message=str(exc),
+            details=[{"service": "ollama"}],
+        ) from exc
 
     except Exception:
         raise

@@ -9,7 +9,7 @@ from app.lib.http.openai_client import openai_post_with_retry
 from app.utils.logger import logger
 
 
-CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "llama3.1")
+CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5:1.5b")
 
 
 CONTEXT_TOKEN_BUDGET = 3500
